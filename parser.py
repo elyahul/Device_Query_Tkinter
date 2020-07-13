@@ -9,10 +9,10 @@ from tkinter import messagebox, simpledialog
 import netmiko
 from netmiko import ConnectHandler, NetMikoTimeoutException, NetMikoAuthenticationException
 import sys
-import ipaddress
-import threading
 import socket
 import json
+import ast
+import pdb
 
    
 if __name__ == '__main__':

@@ -13,22 +13,8 @@ import threading
 import json
 import socket
 from collections import deque
-'''
-Prefase: Configure main window.
- Phase1: Insert subnet to execute scanning (ping scan)
- Phase2: Scan for devices in the given network
-  Postphase: Configure progress bar window and run the task (till queue is empty)
- Phase3: Get the list of reachable devices and proceed with SSH connection (threaded task)
- Phase4: Parse the configuration for each device and get expected data
- Phase5: Create queue object and fill with cfg data
-  Postphase: Create named tupple class objects for each device to store cfg data
- Phase6: Get objects from the queue and assign to named tupple class instances
- Phase7: Define anomaly for each object in named tupple class instance
- Phase8: Loop through instances and select anomaly
- Phase9: Create Yaml file for detected anomaly devices
- Phase10: Get final results from the file
- Phase11: Create table and populate data from namedtuples
- '''
+
+
 
 class Worker:
     def __init__(self):
@@ -52,9 +38,7 @@ class Worker:
     def threader(self,host):
        if self.portscan(host,22) == True:
             self.dq.append(host)
-            print(self.dq)
-            
-    
+                
     def ssh_connect(self, ip, cfg_list):
        params = {'device_type': 'cisco_ios',
                   'ip': ip,
@@ -154,6 +138,7 @@ class ProgressWindow(simpledialog.Dialog):
         self.create_window()
         self.create_widgets()
         self.next()
+        self.destroy_self()
 
     def create_window(self):
         ''' Create progress window '''
@@ -209,7 +194,6 @@ class ProgressWindow(simpledialog.Dialog):
             messagebox.showinfo(title='Execution Stage Window', message='Connecting to host {}'.format(host))
             worker.ssh_connect(host, worker.cfg_list)
             cfg_dict[host] = worker.cfg
-            print(cfg_dict[host])
         with open(r'/home/elil/GitRep/Device_Query_Tkinter/cfg_dict.json', 'w') as f:
             f.write(json.dumps(cfg_dict))
 
@@ -226,8 +210,8 @@ class ProgressWindow(simpledialog.Dialog):
     def destroy_self(self, event=None):
         self.destroy()
 
-if __name__ == '__main__':
-    root = tk.Tk()
-    window = MainWindow(root)
-    root.mainloop()
-
+##if __name__ == '__main__':
+##    root = tk.Tk()
+##    window = MainWindow(root)
+##    root.mainloop()
+##
