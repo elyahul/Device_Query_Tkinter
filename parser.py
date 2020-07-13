@@ -1,17 +1,29 @@
-import sys 
 from PyQt5.QtWidgets import *
-from collections import namedtuple
+from collections import namedtuple, deque
 import re
-import json
-import ast
 from pyqtTable import Table
+from rootWindow import MainWindow
+import tkinter as tk
+from tkinter import ttk
+from tkinter import messagebox, simpledialog
+import netmiko
+from netmiko import ConnectHandler, NetMikoTimeoutException, NetMikoAuthenticationException
+import sys
+import ipaddress
+import threading
+import socket
+import json
 
    
 if __name__ == '__main__':
+    
+    root = tk.Tk()
+    window = MainWindow(root)
+    root.mainloop()
     items_list = []
     alarm_list = []
 
-    with open(r'/home/elil/cfg_dict', 'r') as f:
+    with open(r'/home/elil/GitRep/Device_Query_Tkinter/cfg_dict.json', 'r') as f:
         cfg_dict = ast.literal_eval(f.read())
 
     for value in cfg_dict.values():                                                            #  parse cfg data and arrange items into tuple per each device
