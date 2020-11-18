@@ -19,7 +19,8 @@ from collections import deque
 class Worker:
     def __init__(self):
         self.cfg = {}
-        self.cfg_list = ['show run | include hostname', 'show processes memory', 'show processes cpu']
+        self.cfg_list = ['show run | include hostname', 'show processes memory | include  Total',
+                         'show processes cpu | include CPU']
         self.dq = deque([])
         
     access_lock = threading.Lock()
@@ -35,18 +36,18 @@ class Worker:
             else:
                 return False
         
-    def threader(self,host):
+    def threader(self, host):
        if self.portscan(host,22) == True:
             self.dq.append(host)
                 
-    def ssh_connect(self, ip, cfg_list):
+    def ssh_connect(self, ip, conf_list):
        params = {'device_type': 'cisco_ios',
                   'ip': ip,
                   'username': 'elil',
                   'password': 'cisco'}
        try:
            ssh = netmiko.ConnectHandler(**params)
-           for command in cfg_list:
+           for command in conf_list:
                result = ssh.send_command(command)
                time.sleep(0.9)
                self.cfg[command] = result
@@ -90,9 +91,9 @@ class MainWindow(ttk.Frame):
     @staticmethod                                             # function to check network address sanity
     def check_subnet(network):
         try:
-            ipaddress.ip_network(network)
+            ipaddress.ip_network(network, strict=True)
             return True
-        except Exception as err:
+        except ValueError as err:
             messagebox.showerror(title="Prompt Error", message=err)
             return False
 
@@ -103,24 +104,35 @@ class MainWindow(ttk.Frame):
         self.net_entry.delete(0, 'end')
 
     def submit_net(self, event=None):                          # this function defines behavior when "submit_ip" button is pressed
-        global subnet, hostlist
+        global hostlist
         hostlist = []
-        subnet = self.net_entry.get()                          # read subnet address and check sanity
-        if self.check_subnet(subnet) == True:
+        ip_subnet = self.net_entry.get()                       # read subnet address and check sanity
+        if self.check_subnet(ip_subnet) == True:
             self.clear_entry()
-            self.txtvar.set("Network Address is accepted ...")
-            for host in list((ipaddress.ip_network(subnet)).hosts()):
-                hostlist.append(host.compressed)
-            self.master.iconify()
-            self.start_progress()
-            return hostlist
+            _network = ipaddress.ip_network(ip_subnet)    
+            if _network.num_addresses == 4294967296:
+               self.txtvar.set("Zero subnet mask is not allowed. Try Again")
+            elif _network.num_addresses == 1:
+                self.txtvar.set("Network Address is Accepted")
+                hostlist.append(_network.broadcast_address.compressed)
+                self.master.iconify()
+                self.start_progress()
+            else:
+                self.txtvar.set("Network Address is Accepted")
+                for host in list(_network.hosts()):
+                        hostlist.append(host.compressed)
+                self.master.iconify()
+                self.start_progress()
         else:
             self.clear_entry()
-            self.txtvar.set("Try Again. Input the correct Network adress")
+            self.txtvar.set("Wrong Input. Try again ")
+        return hostlist
+        
 
     def start_progress(self):
         ''' Open modal window '''
         prgs_window = ProgressWindow(self)                      # create progress window
+        self.wait_window(prgs_window)
         
 
 class ProgressWindow(simpledialog.Dialog):
@@ -137,8 +149,8 @@ class ProgressWindow(simpledialog.Dialog):
         self.devlist = globals()['hostlist']
         self.create_window()
         self.create_widgets()
-        self.next()
-        self.destroy_self()
+        self.launcher_foo()
+              
 
     def create_window(self):
         ''' Create progress window '''
@@ -147,12 +159,11 @@ class ProgressWindow(simpledialog.Dialog):
         self.transient(self.master)   # show only one window in the task bar
         self.title('Progress execution bar')
         self.resizable(False, False)  # window is not resizable
-        # self.close gets fired when the window is destroyed
         self.protocol(u'WM_DELETE_WINDOW', self.destroy_self)
         self.bind(u'<Escape>', self.destroy_self)  # cancel progress when <Escape> key is pressed
 
     def create_widgets(self):
-        ''' Widgets for progress window are created here '''
+        ''' Widgets for progress window are created here '''  
         self.var1 = tk.StringVar()
         self.var2 = tk.StringVar()
         self.num = tk.IntVar()
@@ -162,56 +173,52 @@ class ProgressWindow(simpledialog.Dialog):
         self.progress = ttk.Progressbar(master=self, maximum=self.maximum, orient='horizontal',
                                         length=self.length, variable=self.num, mode='determinate')
         self.progress.pack(padx=5, pady=3)
-        ttk.Button(self, text='Cancel', command=self.close).pack(anchor='e', padx=5, pady=(0, 3))
+        ttk.Button(self, text='Cancel', command=self.destroy).pack(anchor='e', padx=5, pady=(0, 3))
+       
  
-    def next(self):
+    def launcher_foo(self):
         ''' Take next ip address and check for rachability '''
         n = self.num.get()
-        n += 1
-        host = self.devlist[n]
-        worker = Worker()
-        self.var1.set('Host ' + self.devlist[n]) 
+        host = self.devlist[n]                  # get host ip addresse from a GLOBAL variable 
+        self.var1.set('Host ' + host) 
         self.num.set(n+1)
-        if worker.portscan(host, 22) == True:
-            self.active_hosts.append(host)
+        worker = Worker()
+        if worker.portscan(host, 22) == True:  # if host is reachable via ssh
+            self.active_hosts.append(host)     # add host ip-address to "Hostlist"
             self.var2.set('is reachable')
             time.sleep(1)
         else:
             self.var2.set('is unreachable')
-
-        if n < (self.maximum-1):
-            self.after(30, self.next)                                 # call itself after some time
+     
+        if n < (self.maximum-1):                                     # while counter is less then number of hosts 
+            self.after(300, self.launcher_foo)                       # return the func proccess after 300ms
+        elif len(self.active_hosts) == 0:                            # finish if no active hosts found
+            messagebox.showinfo('Info', message='No active hosts found') 
+            self.destroy_self()   
         else:
-            self.destroy_self()                                       # close progress window 
-            messagebox.showinfo('Info', message='Ok: process finished successfully')
-            time.sleep(0.3)
-            self.do_something(self.active_hosts)                      # connect to live devices and get configuration
-      
-    def do_something(self, hostlist):
+            self.close()
+            self.do_something(self.active_hosts)                     # next function initialize after all active hosts found
+            
+             
+    def do_something(self, _hostlist):
         cfg_dict = {}
-        for host in hostlist:
+        for host in _hostlist:
             worker = Worker()
             messagebox.showinfo(title='Execution Stage Window', message='Connecting to host {}'.format(host))
-            worker.ssh_connect(host, worker.cfg_list)
+            worker.ssh_connect(host, worker.cfg_list)                 # connect to active devices and get configuration
             cfg_dict[host] = worker.cfg
-        with open(r'/home/elil/GitRep/Device_Query_Tkinter/cfg_dict.json', 'w') as f:
+        with open(r'/home/eli/GitRep/Device_Query_Tkinter/cfg_dict.json', 'w') as f:
             f.write(json.dumps(cfg_dict))
 
     def close(self, event=None):
         ''' Close progress window '''
-        if self.progress['value'] == (self.maximum-1):
-            self.destroy_self()      # destroy progress window
+        if self.progress['value'] == (self.maximum):
             messagebox.showinfo(title='Info', message='Ok: process finished successfully') 
         else:
-            self.destroy_self()      # destroy progress window
             messagebox.showinfo(message='Cancel: process is cancelled')
         self.master.focus_set()  # put focus back to the parent window
+        self.destroy_self()      # destroy progress window
         
     def destroy_self(self, event=None):
         self.destroy()
 
-##if __name__ == '__main__':
-##    root = tk.Tk()
-##    window = MainWindow(root)
-##    root.mainloop()
-##
